@@ -70,7 +70,7 @@ format: check-fmt
 	$(CARGO) fmt
 
 check-format: check-fmt
-	$(CARGO) -- --check
+	$(CARGO) fmt -- --check
 
 # Linter
 linter: check-clippy
