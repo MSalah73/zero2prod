@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 # Trigger the workflow on every push/pull-request
 on: [push, pull_request]
@@ -20,17 +20,17 @@ jobs:
     steps:
       - name: Checkout repository last commit
         # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it: "v1" the whole repo while "v2" checkout the last commit\
-      - uses: actions/checkout@v2
+        uses: actions/checkout@v2
       
       - name: Install minimal toolchain
-      - uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
       
       - name: Run cargo-test
-      - uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: test
 
@@ -39,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository last commit
-      - uses: actions/checkout@v2
+        uses: actions/checkout@v2
       
       - name: Install stable toolchain
-      - uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
@@ -50,7 +50,7 @@ jobs:
           components: rustfmt
           
       - name: Run cargo-fmt
-      - uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
@@ -60,17 +60,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository last commit
-      - uses: actions/checkout@v2
+        uses: actions/checkout@v2
       
       - name: Install stable toolchain
-      - uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: clippy
       
       - name: Run cargo-clippy
-      - uses: actions-rs/clippy-check@v1
+        uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: -- -D warnings
