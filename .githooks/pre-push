@@ -3,10 +3,10 @@
 TEST_CMD="make test"
 SEC_CMD="make check-sec"
 
-$($TEST_CMD)
+command $TEST_CMD
 TEST_RESULT=$?
 
-$($SEC_CMD)
+command $SEC_CMD
 SEC_RESULT=$?
 
 Result() {

@@ -3,10 +3,10 @@
 FORMAT_CMD="make check-format"
 LINTER_CMD="make linter"
 
-$($FORMAT_CMD)
+command $FORMAT_CMD
 FORMAT_RESULT=$?
 
-$($LINTER_CMD)
+command $LINTER_CMD
 LINTER_RESULT=$?
 
 Result() {
