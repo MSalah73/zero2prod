@@ -91,4 +91,4 @@ jobs:
       - name: Run cargo-tarpaulin and push to coveralls
         uses: actions-rs/tarpaulin@v0.1
         with:
-          args: '--ignore-tests --ciserver github-ci --coveralls $COVERALLS_REPO_TOKEN'
+          args: --ignore-tests --ciserver github-ci --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }}
