@@ -94,6 +94,6 @@ jobs:
           args: '--ignore-tests --ciserver github-ci --coveralls $COVERALLS_REPO_TOKEN'
     
       - name: Push to Coveralls
-        uses: coverallsapp/github-action@v2
+        uses: coverallsapp/github-action@MSalah73-patch-1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
