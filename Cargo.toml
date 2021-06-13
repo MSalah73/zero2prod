@@ -7,4 +7,22 @@ license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+# Use defualt package name
+# to change it -- https://doc.rust-lang.org/cargo/reference/cargo-targets.html#cargo-targets
+path = "src/lib.rs"
+
+# For Transparency, We will have everything spill out -- even if it's done automatically 
+# Array in TOML -- we have mutltiple libraries/binaries in the same repo
+# check out workspace feature
+[[bin]]
+path = "src/main.rs"
+name = "zero2prod"
+
 [dependencies]
+actix-web = "4.0.0-beta.5"
+
+[dev-dependencies]
+actix-rt = "2"
+reqwest = "0.11"
+tokio = "1"
