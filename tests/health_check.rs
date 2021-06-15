@@ -1,4 +1,6 @@
 //! tests/health_check.rs
+
+use std::net::TcpListener;
 //
 // `actix_rt::test` is the testing equivalent ofd `actix_web::main`
 //  Using `actix_rt` spare us from adding `#[test]` attribute
@@ -13,7 +15,7 @@
 
 #[actix_rt::test]
 async fn health_check_assessment() {
-    spawn_app();
+    let address = spawn_app();
 
     // reqwest is black box testing tool -- interact with api with http request
     // reqwest decoupled from our actives this woild work if we change frameworks
@@ -22,7 +24,7 @@ async fn health_check_assessment() {
     // it under`[dev-dependencies]`in Cargo.toml
     let client = reqwest::Client::new();
     let response = client
-        .get("http://127.0.0.1:8000/health_check")
+        .get(&format!("{}/health_check", address))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -31,8 +33,10 @@ async fn health_check_assessment() {
     assert_eq!(Some(0), response.content_length());
 }
 
-fn spawn_app() {
-    let server = zero2prod::run().expect("Failed to bind address.");
+fn spawn_app() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
+    let port = listener.local_addr().unwrap().port();
+    let server = zero2prod::run(listener).expect("Failed to bind address.");
     // Tokio runs the in the background as a background task
     // the spawn method takes a future and pass it ovet the
     // runtime for polling without waitinf for it compeletion which
@@ -51,4 +55,5 @@ fn spawn_app() {
     //
     // `cargo add tokio --dev --vers 1
     let _ = tokio::spawn(server);
+    format!("http://127.0.0.1:{}", port)
 }
