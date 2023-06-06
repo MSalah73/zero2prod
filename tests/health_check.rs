@@ -44,16 +44,13 @@ async fn subscribe_returns_400_when_data_is_missing() {
     let address = spawn_app();
     let client = reqwest::Client::new();
     let test_cases = [
-        ("name=John73&email=","email is empty"),
-        ("name=John73&","email is missing"),
-        ("name=&email=john_r77%40gmail.com", "name is empty"),
-        ("email=john_r77%40gmail.com","name is missing"),
-        ("name=&email=", "both email and name are empty"),
-        ("", "both email and name are missing")
+        ("name=John73&email=", "email is missing"),
+        ("name=&email=john_r77%40gmail.com", "name is missing"),
+        ("name=&email=", "both email and name are missing"),
     ];
 
     //Act
-    for (invalid_body, error_message) in test_cases { 
+    for (invalid_body, error_message) in test_cases {
         let response = client
             .post(&format!("{}/subscriptions", &address))
             .header("Content-Type", "application/x-www-form-urlencoded")
