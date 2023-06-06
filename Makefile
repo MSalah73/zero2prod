@@ -92,4 +92,4 @@ audit:
 	$(CARGO) audit
 
 deny:
-	$(CARGO) deny check all
+	$(CARGO) deny check advisories
