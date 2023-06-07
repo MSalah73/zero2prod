@@ -1,6 +1,5 @@
 use actix_web::dev::Server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
-use serde;
 use std::net::TcpListener;
 
 #[derive(serde::Deserialize)]
