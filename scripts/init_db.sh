@@ -23,21 +23,25 @@ DB_USER=${POSTGRES_USER:=postgres}
 # Check if a custom password has been set, otherwise then to default 'password'
 DB_PASSWORD="${POSTGRES_PASSWORD:=password}"
 # Check if a custom name has been set, otherwise then to default 'newsletter'
-DB_NAME="${POSTGRES_NAME:=newletter}"
+DB_NAME="${POSTGRES_NAME:=newsletter}"
 # Check if a custom port has been set, otherwise then to default '5432'
 DB_PORT="${POSTGRES_PORT:=5432}"
 # Check if a custom host has been set, otherwise then to default 'localhost'
 DB_HOST="${POSTGRES_HOST:=localhost}"
 
-# Launch postgres using Docker
-docker run \
-	-e POSTGRES_USER=${DB_USER} \
-	-e POSTGRES_PASSWORD=${DB_PASSWORD} \
-	-e POSTGRES_DB=${DB_NAME} \
-	-p "${DB_PORT}":5432 \
-	-d postgres \
-	postgres -N 1000
-# the above increases the maximum number of connections for testing purposes
+# Allow to skip if a dockerized Postgres database instance is already running
+if [[ -z "${SKIP_DOCKER}" ]]
+then
+	# Launch postgres using Docker
+	docker run \
+		-e POSTGRES_USER=${DB_USER} \
+		-e POSTGRES_PASSWORD=${DB_PASSWORD} \
+		-e POSTGRES_DB=${DB_NAME} \
+		-p "${DB_PORT}":5432 \
+		-d postgres \
+		postgres -N 1000
+	# the above increases the maximum number of connections for testing purposes
+fi
 
 # Keep ping postgers until it's ready to accept commands
 export PGPASSWORD="${DB_PASSWORD}"
@@ -55,3 +59,7 @@ DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAM
 export DATABASE_URL
 
 sqlx database create
+sqlx migrate run
+
+
+>&2 echo  "Postgres has been migrated, ready to go"
