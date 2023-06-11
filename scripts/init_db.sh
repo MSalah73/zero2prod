@@ -46,9 +46,16 @@ fi
 # Keep ping postgers until it's ready to accept commands
 export PGPASSWORD="${DB_PASSWORD}"
 
+readonly timeout=45
+iter=1
 until psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q'; do
+	if [ "${iter}" -gt "${timeout}" ]; then
+		>&2 echo  "Unable to connect to Postgres, aborting due to ${timeout}s timeout!"
+		exit 1
+	fi
 	>&2 echo  "Postgres is still unavaliable - sleeping..."
 	sleep 1
+	((++iter))
 done
 
 
