@@ -1,7 +1,6 @@
 use actix_web::{post, web, HttpResponse};
 use chrono::Utc;
 use sqlx::PgPool;
-use tracing::Instrument;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -20,17 +19,13 @@ pub struct FormData {
     )
 )]
 async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
-    match insert_subscriber(&form, &pool).await
-    {
+    match insert_subscriber(&form, &pool).await {
         Ok(_) => HttpResponse::Ok().finish(),
-        Err(_) => HttpResponse::InternalServerError().finish()
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-#[tracing::instrument(
-    name = "Saving the new subscriber to the database.",
-    skip(form, pool)
-)]
+#[tracing::instrument(name = "Saving the new subscriber to the database.", skip(form, pool))]
 async fn insert_subscriber(form: &FormData, pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
@@ -45,8 +40,8 @@ async fn insert_subscriber(form: &FormData, pool: &PgPool) -> Result<(), sqlx::E
     .execute(pool)
     .await
     .map_err(|e| {
-            tracing::error!("Failed to execute query: {:?}", e);
-            e
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
     })?;
     Ok(())
 }
