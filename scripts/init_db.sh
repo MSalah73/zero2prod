@@ -8,8 +8,6 @@ if ! [ -x "$(command -v psql)" ]; then
 	echo >&2 "Error: psql is not installed"
 	exit 1
 fi
-echo $(command -v sqlx)
-echo $(command -v sqlx)
 if ! [ -x "$(command -v sqlx)" ]; then
 	>&2 echo "Error: sqlx is not installed"
 	>&2 echo "Use:"
