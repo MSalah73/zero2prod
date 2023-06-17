@@ -14,6 +14,12 @@ path = "src/lib.rs"
 path = "src/main.rs"
 name = "zero2prod"
 
+[profile.release]
+# strip symbols from the binary to reduce final target size
+strip = true
+# enable link time optimiztion - to remove dead code and improve target size 
+lto = true
+
 [dependencies]
 actix-web = "4"
 chrono = { version = "0.4.26", default-features = false, features = ["clock"] }
