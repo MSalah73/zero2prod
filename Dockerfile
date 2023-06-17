@@ -1,5 +1,5 @@
 # Compute recipe file 
-FROM lukemathwalker/cargo-chef:latest-rust-1.70.0 as chef
+FROM clux/muslrust:stable as chef
 
 WORKDIR /app
 
@@ -11,11 +11,13 @@ RUN apt-get update && apt-get install -y \
 FROM chef as planner
 
 COPY . . 
+
+RUN cargo install cargo-chef
 # Compute a lock-like file for the project
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Build UPX Stage
-FROM debian:bullseye-slim as upx
+FROM chef as upx
 #
 RUN apt-get update && apt-get install -y build-essential curl cmake \
 	&& mkdir -p /upx \
@@ -25,6 +27,8 @@ RUN apt-get update && apt-get install -y build-essential curl cmake \
 
 # Caching and Building Stage 
 FROM chef as builder
+
+RUN cargo install cargo-chef
 
 COPY --from=planner /app/recipe.json recipe.json
 
@@ -37,30 +41,20 @@ COPY . .
 ENV SQLX_OFFLINE true
 
 # Build the application
-RUN cargo build --release --bin zero2prod 
+RUN cargo build --bin zero2prod --release --target x86_64-unknown-linux-musl
 
 # Optimazize the applization binary for lower size
 COPY --from=upx /usr/bin/upx /usr/bin/upx
 
-RUN upx /app/target/release/zero2prod 
+RUN upx /app/target/x86_64-unknown-linux-musl/release/zero2prod 
 
 # Runtime Stage 
-FROM debian:bullseye-slim as runtime
+FROM gcr.io/distroless/static:nonroot as runtime
 
 WORKDIR /app
-
-# Install OpenSSL - it is a dynamically linked by some of our dependencies  
-# Install certificates -- it is needed to verify TLS certificates when establishing HTTP connections
-RUN apt-get update && apt-get install -y \
-	--no-install-recommends openssl ca-certificates \
-	# Clean up
-	&& apt-get autoremove -y \
-	&& apt-get clean -y \
-	&& rm -rf /var/lib/apt/lists/*
-
 # Copy the compiled binary from the builder environment
 # to the runtime 
-COPY --from=builder /app/target/release/zero2prod zero2prod
+COPY --from=builder --chown=nonroot:nonroot /app/target/x86_64-unknown-linux-musl/release/zero2prod zero2prod
 
 # We need the configuration file at runtime 
 COPY configuration configuration

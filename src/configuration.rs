@@ -3,7 +3,7 @@ use secrecy::{ExposeSecret, Secret};
 // List of valid runtime time environments
 pub enum Environment {
     Local,
-    Production
+    Production,
 }
 
 impl Environment {
@@ -17,13 +17,16 @@ impl Environment {
 
 impl TryFrom<String> for Environment {
     type Error = String;
-    
+
     fn try_from(s: String) -> Result<Self, Self::Error> {
         match s.to_lowercase().as_str() {
             "local" => Ok(Self::Local),
             "production" => Ok(Self::Production),
-            other => Err(format!("{} is not a supported enviroment. \
-                Use either `local` or `production`.", other)),
+            other => Err(format!(
+                "{} is not a supported enviroment. \
+                Use either `local` or `production`.",
+                other
+            )),
         }
     }
 }
@@ -31,7 +34,7 @@ impl TryFrom<String> for Environment {
 #[derive(serde::Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
-    pub application: ApplicationSettings
+    pub application: ApplicationSettings,
 }
 
 #[derive(serde::Deserialize)]
@@ -84,8 +87,12 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     // Initialize our configuration reader
     let settings = config::Config::builder()
         // Add configuration values from a file named configuration.yaml.
-        .add_source(config::File::from(configuration_directory.join("base.yaml")))
-        .add_source(config::File::from(configuration_directory.join(environment_filename)))
+        .add_source(config::File::from(
+            configuration_directory.join("base.yaml"),
+        ))
+        .add_source(config::File::from(
+            configuration_directory.join(environment_filename),
+        ))
         .build()?;
     // Try to convert the configuration values into the Settings type
     settings.try_deserialize::<Settings>()
