@@ -45,4 +45,8 @@ features = ["runtime-tokio-rustls", "macros", "postgres", "uuid", "chrono", "mig
 
 [dev-dependencies]
 claims = "0.7.1"
+fake = "2.6.1"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+rand = "0.8.5"
 reqwest = "0.11.18"
