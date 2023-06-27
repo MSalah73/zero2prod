@@ -5,10 +5,9 @@ pub struct SubscriberEmail(String);
 
 impl SubscriberEmail {
     pub fn parse(email: String) -> Result<SubscriberEmail, String> {
-        if validate_email(&email) {
-            Ok(Self(email))
-        } else {
-            Err(format!("{} is not a valid subscriber email.", email))
+        match validate_email(&email) {
+            true => Ok(Self(email)),
+            false => Err(format!("{} is not a valid subscriber email.", email)),
         }
     }
 }
