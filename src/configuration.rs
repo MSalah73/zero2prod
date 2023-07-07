@@ -48,6 +48,7 @@ pub struct ApplicationSettings {
     pub host: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
+    pub base_url: String,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -67,6 +68,15 @@ pub struct EmailClientSettings {
     pub sender_email: String,
     pub authorization_token: Secret<String>,
     pub timeout_milliseconds: u64,
+}
+
+impl ApplicationSettings {
+    pub fn base_url(&self) -> Result<reqwest::Url, String> {
+        match reqwest::Url::parse(&self.base_url.clone()) {
+            Ok(url) => Ok(url),
+            Err(_) => Err(format!("{} is not a valid url.", self.base_url)),
+        }
+    }
 }
 
 impl DatabaseSettings {
