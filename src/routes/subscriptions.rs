@@ -9,6 +9,23 @@ use rand::{thread_rng, Rng};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+#[derive(serde::Deserialize)]
+pub struct FormData {
+    name: String,
+    email: String,
+}
+
+// FormData impl's
+impl TryFrom<FormData> for NewSubscriber {
+    type Error = String;
+
+    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(value.name)?;
+        let email = SubscriberEmail::parse(value.email)?;
+        Ok(Self { name, email })
+    }
+}
+
 #[derive(thiserror::Error)]
 pub enum SubscribeError {
     #[error("{0}")]
@@ -23,12 +40,6 @@ pub enum InsertDatabaseError {
     StoreTokenError(#[source] sqlx::Error),
     #[error("A database error was encountered while trying to insert a new subscriber.")]
     InsertSubscriberError(#[source] sqlx::Error),
-}
-
-#[derive(serde::Deserialize)]
-pub struct FormData {
-    name: String,
-    email: String,
 }
 
 // SubscribeError impl's
@@ -57,17 +68,6 @@ impl From<String> for SubscribeError {
 impl std::fmt::Debug for InsertDatabaseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         error_chain_fmt(self, f)
-    }
-}
-
-// FormData impl's
-impl TryFrom<FormData> for NewSubscriber {
-    type Error = String;
-
-    fn try_from(value: FormData) -> Result<Self, Self::Error> {
-        let name = SubscriberName::parse(value.name)?;
-        let email = SubscriberEmail::parse(value.email)?;
-        Ok(Self { name, email })
     }
 }
 
