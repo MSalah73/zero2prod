@@ -17,7 +17,13 @@ pub enum SubscribeError {
     UnexpectedError(#[from] anyhow::Error),
 }
 
-pub struct StoreTokenError(sqlx::Error);
+#[derive(thiserror::Error)]
+pub enum InsertDatabaseError {
+    #[error("A database error was encountered while trying to store a subscription token.")]
+    StoreTokenError(#[source] sqlx::Error),
+    #[error("A database error was encountered while trying to insert a new subscriber.")]
+    InsertSubscriberError(#[source] sqlx::Error),
+}
 
 #[derive(serde::Deserialize)]
 pub struct FormData {
@@ -47,25 +53,10 @@ impl From<String> for SubscribeError {
     }
 }
 
-//StoreTokenError impl's
-impl std::fmt::Display for StoreTokenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "A database error was encountered while trying to store a subscription token."
-        )
-    }
-}
-
-impl std::fmt::Debug for StoreTokenError {
+//InsertDatabaseError impl's
+impl std::fmt::Debug for InsertDatabaseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         error_chain_fmt(self, f)
-    }
-}
-
-impl std::error::Error for StoreTokenError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
     }
 }
 
@@ -162,7 +153,7 @@ async fn send_confirmation_email(
 async fn insert_subscriber(
     new_subscriber: &NewSubscriber,
     transaction: &mut Transaction<'_, Postgres>,
-) -> Result<Uuid, sqlx::Error> {
+) -> Result<Uuid, InsertDatabaseError> {
     let subscriber_id = Uuid::new_v4();
 
     sqlx::query!(
@@ -176,7 +167,8 @@ async fn insert_subscriber(
         Utc::now()
     )
     .execute(transaction)
-    .await?;
+    .await
+    .map_err(InsertDatabaseError::InsertSubscriberError)?;
     Ok(subscriber_id)
 }
 
@@ -188,7 +180,7 @@ async fn store_token(
     subscriber_id: Uuid,
     subscription_token: &str,
     transaction: &mut Transaction<'_, Postgres>,
-) -> Result<(), StoreTokenError> {
+) -> Result<(), InsertDatabaseError> {
     sqlx::query!(
         r#"
         INSERT INTO  subscription_tokens (subscriber_id, subscription_token)
@@ -199,7 +191,7 @@ async fn store_token(
     )
     .execute(transaction)
     .await
-    .map_err(StoreTokenError)?;
+    .map_err(InsertDatabaseError::StoreTokenError)?;
     Ok(())
 }
 fn generate_subscriber_token() -> String {
