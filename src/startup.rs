@@ -1,6 +1,6 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{confirm, health_check, subscribe};
+use crate::routes::{confirm, health_check, publish_newsletter, subscribe};
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
@@ -80,6 +80,7 @@ pub fn run(
             .service(health_check)
             .service(subscribe)
             .service(confirm)
+            .service(publish_newsletter)
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())

@@ -22,8 +22,8 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
             "text":"Newsletter body as plain text",
         },
     });
-    // Act
 
+    // Act
     let response = reqwest::Client::new()
         .post(&format!("{}/newsletters", &app.address))
         .json(&newsletter_body_request)
@@ -39,10 +39,13 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
 async fn create_unconfirmed_subscribers(app: &TestApp) {
     let body = "name=John73&email=john_r77%40gmail.com";
 
-    let _ = Mock::given(path("/email"))
+    // We need to use _veriable_name for the guard to be droped at the end of the scope
+    // We can not use _
+    let _mock_guard = Mock::given(path("/email"))
         .and(method("POST"))
         .respond_with(ResponseTemplate::new(200))
         .named("Create unconfirmed subscriber")
+        .expect(1)
         .mount_as_scoped(&app.email_server)
         .await;
 
