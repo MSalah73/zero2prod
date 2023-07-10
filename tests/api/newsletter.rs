@@ -1,9 +1,60 @@
 use crate::helper::{spawn_app, ConfirmationLinks, TestApp};
-use actix_web::HttpResponse;
-use reqwest::Request;
 use wiremock::matchers::{any, method, path};
 use wiremock::{Mock, ResponseTemplate};
 
+#[tokio::test]
+async fn newsletterr_return_400_for_invalid_data() {
+    // Arrange
+    let app = spawn_app().await;
+    let test_cases = vec![
+        (
+            serde_json::json!({
+                "content": {
+                    "html":"<p>Newsletter body as HTML</P>",
+                    "text":"Newsletter body as plain text",
+                },
+            }),
+            "missing title",
+        ),
+        (
+            serde_json::json!({
+                "title": "Newsletter Title"
+            }),
+            "missing content",
+        ),
+        (
+            serde_json::json!({
+                "title": "Newsletter Title",
+                "content": {
+                    "text":"Newsletter body as plain text",
+                },
+            }),
+            "missing html",
+        ),
+        (
+            serde_json::json!({
+                "title": "Newsletter Title",
+                "content": {
+                    "html":"<p>Newsletter body as HTML</P>",
+                },
+            }),
+            "missing text",
+        ),
+        (serde_json::json!({}), "empty"),
+    ];
+
+    // Act
+    for (invalid_body, error_message) in test_cases {
+        let response = app.post_newsletters(&invalid_body).await;
+        // Assert
+        assert_eq!(
+            response.status().as_u16(),
+            400,
+            "The API did not fail with a 400 `Bad Request` when payload was {}",
+            error_message
+        );
+    }
+}
 #[tokio::test]
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     // Arrange
@@ -26,13 +77,7 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     });
 
     // Act
-    let response = reqwest::Client::new()
-        .post(&format!("{}/newsletters", &app.address))
-        .json(&newsletter_body_request)
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
+    let response = app.post_newsletters(&newsletter_body_request).await;
     // Asserrt
     assert_eq!(response.status().as_u16(), 200);
     //Mock verifies on Drop that we haven't send any newsletters
@@ -61,12 +106,7 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
     });
 
     // Act
-    let response = reqwest::Client::new()
-        .post(&format!("{}/newsletters", &app.address))
-        .json(&newsletter_body_request)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_newsletters(&newsletter_body_request).await;
 
     // Asserrt
     assert_eq!(response.status().as_u16(), 200);
