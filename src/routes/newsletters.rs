@@ -9,7 +9,7 @@ use actix_web::{
 };
 use anyhow::Context;
 use base64::Engine;
-use secrecy::Secret;
+use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
@@ -25,8 +25,8 @@ pub struct Content {
 }
 
 pub struct Credentials {
-    _username: String,
-    _password: Secret<String>,
+    username: String,
+    password: Secret<String>,
 }
 
 pub struct ConfirmedSubscriber {
@@ -67,7 +67,8 @@ impl std::fmt::Debug for PublishNewsletterError {
 
 #[tracing::instrument(
     name = "Publish newsletter confirmed subscribers.",
-    skip(body, email_client, pool)
+    skip(body, email_client, pool),
+    fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 #[post("/newsletters")]
 pub async fn publish_newsletter(
@@ -76,8 +77,15 @@ pub async fn publish_newsletter(
     request: HttpRequest,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, PublishNewsletterError> {
-    let _credentials =
+    let credentials =
         basic_authentication(request.headers()).map_err(PublishNewsletterError::AuthError)?;
+    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
+    tracing::Span::current().record(
+        "user_id",
+        &tracing::field::display(&credentials.password.expose_secret()),
+    );
+    let user_id = validate_credentials(credentials, &pool).await?;
+    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
     let confirmed_subscribers = get_confirmed_subscribers(&pool)
         .await
         .context("Failed to fetch confirmed subscriber from the database.")?;
@@ -124,19 +132,46 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
         .next()
         .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'basic' auth."))?
         .to_string();
-    let mut credentials = decoded_credentials.splitn(2, ':');
     let password = credentials
         .next()
         .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'basic' auth."))?
         .to_string();
 
     Ok(Credentials {
-        _username: username,
-        _password: Secret::new(password),
+        username,
+        password: Secret::new(password),
     })
 }
 
-#[tracing::instrument(name = "fetch all confirmed subscribers.", skip(pool))]
+#[tracing::instrument(
+    name = "Validate auth credentials against the database.",
+    skip(credentials, pool)
+)]
+async fn validate_credentials(
+    credentials: Credentials,
+    pool: &PgPool,
+) -> Result<uuid::Uuid, PublishNewsletterError> {
+    let user_id: Option<_> = sqlx::query!(
+        r#"
+        SELECT user_id
+        FROM users
+        WHERE username = $1 AND password = $2
+        "#,
+        credentials.username,
+        credentials.password.expose_secret()
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to perform a query to validate auth credentials.")
+    .map_err(PublishNewsletterError::UnexpectedError)?;
+
+    user_id
+        .map(|row| row.user_id)
+        .ok_or_else(|| anyhow::anyhow!("Invalid username or password."))
+        .map_err(PublishNewsletterError::AuthError)
+}
+
+#[tracing::instrument(name = "Fetch all confirmed subscribers.", skip(pool))]
 async fn get_confirmed_subscribers(
     pool: &PgPool,
 ) -> Result<Vec<Result<ConfirmedSubscriber, anyhow::Error>>, anyhow::Error> {
