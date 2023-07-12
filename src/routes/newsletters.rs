@@ -8,9 +8,9 @@ use actix_web::{
     post, web, HttpRequest, HttpResponse, ResponseError,
 };
 use anyhow::Context;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::Engine;
 use secrecy::{ExposeSecret, Secret};
-use sha3::Digest;
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
@@ -152,27 +152,43 @@ async fn validate_credentials(
     credentials: Credentials,
     pool: &PgPool,
 ) -> Result<uuid::Uuid, PublishNewsletterError> {
-    let password_hash = sha3::Sha3_256::digest(credentials.password.expose_secret().as_bytes());
-    // enocde bytes to lowercase hex via format
-    let password_hash = format!("{:x}", password_hash);
-    let user_id: Option<_> = sqlx::query!(
+    //    let hasher = Argon2::new(
+    //        Algorithm::Argon2id,
+    //        Version::V0x13,
+    //        Params::new(19456, 2, 1, None).context("Failed to build Argon parameters.").map_err(PublishNewsletterError::UnexpectedError)?,
+    //    );
+    let row: Option<_> = sqlx::query!(
         r#"
-        SELECT user_id
+        SELECT user_id, password_hash
         FROM users
-        WHERE username = $1 AND password_hash = $2
+        WHERE username = $1
         "#,
         credentials.username,
-        password_hash
     )
     .fetch_optional(pool)
     .await
-    .context("Failed to perform a query to validate auth credentials.")
+    .context("Failed to perform a query to retrieve stored credentials.")
     .map_err(PublishNewsletterError::UnexpectedError)?;
 
-    user_id
-        .map(|row| row.user_id)
-        .ok_or_else(|| anyhow::anyhow!("Invalid username or password."))
-        .map_err(PublishNewsletterError::AuthError)
+    let (expected_password_hash, user_id) = match row {
+        Some(row) => (row.password_hash, row.user_id),
+        None => {
+            return Err(PublishNewsletterError::AuthError(anyhow::anyhow!(
+                "Unknown username."
+            )));
+        }
+    };
+    let expected_password_hash = PasswordHash::new(&expected_password_hash)
+        .context("Failed to parse hash in PHC string format.")
+        .map_err(PublishNewsletterError::UnexpectedError)?;
+    let _ = Argon2::default()
+        .verify_password(
+            credentials.password.expose_secret().as_bytes(),
+            &expected_password_hash,
+        )
+        .context("Invalid password.")
+        .map_err(PublishNewsletterError::AuthError);
+    Ok(user_id)
 }
 
 #[tracing::instrument(name = "Fetch all confirmed subscribers.", skip(pool))]
