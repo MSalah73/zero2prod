@@ -142,7 +142,10 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
     })
 }
 
-#[tracing::instrument(name = "Validate credentials.", skip(credentials, pool))]
+#[tracing::instrument(
+    name = "Validate auth credentials against the database.",
+    skip(credentials, pool)
+)]
 async fn validate_credentials(
     credentials: Credentials,
     pool: &PgPool,
@@ -152,61 +155,41 @@ async fn validate_credentials(
     //        Version::V0x13,
     //        Params::new(19456, 2, 1, None).context("Failed to build Argon parameters.").map_err(PublishNewsletterError::UnexpectedError)?,
     //    );
-
-    let (user_id, expected_password_hash) = get_stored_credentials(&credentials.username, pool)
-        .await
-        .map_err(PublishNewsletterError::UnexpectedError)?
-        .ok_or_else(|| PublishNewsletterError::AuthError(anyhow::anyhow!("Unknown username.")))?;
-
-    tokio::task::spawn_blocking(move || {
-        verify_password_hash(expected_password_hash, credentials.password)
-    })
-    .await
-    .context("Failed to spawn blocking task.")
-    .map_err(PublishNewsletterError::UnexpectedError)??;
-
-    Ok(user_id)
-}
-#[tracing::instrument(name = "Get stored credentials.", skip(username, pool))]
-async fn get_stored_credentials(
-    username: &str,
-    pool: &PgPool,
-) -> Result<Option<(uuid::Uuid, Secret<String>)>, anyhow::Error> {
-    let row = sqlx::query!(
+    let row: Option<_> = sqlx::query!(
         r#"
         SELECT user_id, password_hash
         FROM users
         WHERE username = $1
         "#,
-        username,
+        credentials.username,
     )
     .fetch_optional(pool)
     .await
-    .context("Failed to perform a query to retrieve stored credentials.")?
-    .map(|row| (row.user_id, Secret::new(row.password_hash)));
+    .context("Failed to perform a query to retrieve stored credentials.")
+    .map_err(PublishNewsletterError::UnexpectedError)?;
 
-    Ok(row)
-}
-
-#[tracing::instrument(
-    name = "Verify password hash.",
-    skip(expected_password_hash, password_candidate)
-)]
-fn verify_password_hash(
-    expected_password_hash: Secret<String>,
-    password_candidate: Secret<String>,
-) -> Result<(), PublishNewsletterError> {
-    let expected_password_hash = PasswordHash::new(expected_password_hash.expose_secret())
+    let (expected_password_hash, user_id) = match row {
+        Some(row) => (row.password_hash, row.user_id),
+        None => {
+            return Err(PublishNewsletterError::AuthError(anyhow::anyhow!(
+                "Unknown username."
+            )));
+        }
+    };
+    let expected_password_hash = PasswordHash::new(&expected_password_hash)
         .context("Failed to parse hash in PHC string format.")
         .map_err(PublishNewsletterError::UnexpectedError)?;
-
-    Argon2::default()
-        .verify_password(
-            password_candidate.expose_secret().as_bytes(),
-            &expected_password_hash,
-        )
+    let _ = tracing::info_span!("Verify password hash.")
+        .in_scope(|| {
+            Argon2::default()
+            .verify_password(
+                credentials.password.expose_secret().as_bytes(),
+                &expected_password_hash,
+            )
+        })
         .context("Invalid password.")
-        .map_err(PublishNewsletterError::AuthError)
+        .map_err(PublishNewsletterError::AuthError);
+    Ok(user_id)
 }
 
 #[tracing::instrument(name = "Fetch all confirmed subscribers.", skip(pool))]
