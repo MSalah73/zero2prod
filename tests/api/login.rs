@@ -10,12 +10,21 @@ async fn an_error_flash_message_is_set_on_failure() {
     "password":"random-password",
     });
 
-    // Act
+    // Act 1 --  Try to login
     let response = app.post_login(&login_body).await;
-
-    let flash_cookies = response.cookies().find(|c| c.name() == "_flash").unwrap();
 
     // Assert
     assert_is_redirect_to(&response, "/login");
-    assert_eq!(flash_cookies.value(), "Authentication failed")
+
+    // Act 2 -- Follow the redirect
+    let html_page = app.get_login_html().await;
+
+    // Assert
+    assert!(html_page.contains(r#"<p><i>Authentication failed</i></p>"#));
+
+    // Acr 3 -- Reload the login page
+    let html_page = app.get_login_html().await;
+
+    // Assert
+    assert!(!html_page.contains(r#"Authentication failed"#));
 }

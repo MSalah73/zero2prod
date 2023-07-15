@@ -3,8 +3,12 @@ use crate::email_client::EmailClient;
 use crate::routes::{
     confirm, health_check, home, login, login_form, publish_newsletter, subscribe,
 };
+use actix_web::cookie::Key;
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use actix_web_flash_messages::storage::CookieMessageStore;
+use actix_web_flash_messages::FlashMessagesFramework;
+use secrecy::ExposeSecret;
 use secrecy::Secret;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -17,7 +21,6 @@ pub struct Application {
 }
 
 pub struct ApplicationBaseUrl(pub reqwest::Url);
-pub struct HmacSecret(pub Secret<String>);
 
 impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
@@ -84,11 +87,17 @@ pub fn run(
     let db_pool = web::Data::new(db_pool);
     let email_client = web::Data::new(email_client);
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
-    let hmac_secret = web::Data::new(HmacSecret(hmac_secret));
+
+    // Flash messages middleware
+    let message_store =
+        CookieMessageStore::builder(Key::from(hmac_secret.expose_secret().as_bytes())).build();
+    let messages_framework = FlashMessagesFramework::builder(message_store).build();
+
     // Get a pointer copy and attach it to the application state
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
+            .wrap(messages_framework.clone())
             .service(health_check)
             .service(subscribe)
             .service(confirm)
@@ -99,7 +108,6 @@ pub fn run(
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())
-            .app_data(hmac_secret.clone())
     })
     .listen(listener)?
     .run();
