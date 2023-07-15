@@ -57,7 +57,7 @@ features = ["runtime-tokio-rustls", "macros", "postgres", "uuid", "chrono", "mig
 version = "0.11.18"
 default-features = false
 # json flag for de/serialization of json payloads
-features = ["json","rustls-tls"]
+features = ["json","rustls-tls", "cookies"]
 
 [dev-dependencies]
 claims = "0.7.1"
