@@ -1,3 +1,4 @@
+use crate::authentication::Password;
 use crate::authentication::{validate_credentials, AuthError, Credentials};
 use crate::routes::admin::dashboard::get_username;
 use crate::session_state::TypedSession;
@@ -39,11 +40,20 @@ pub async fn change_password(
         return Ok(see_other("/admin/password"));
     }
 
+    let _new_passeord = match Password::parse(&form.new_password) {
+        Ok(password) => password,
+        Err(e) => {
+            FlashMessage::error(e.to_string()).send();
+            return Ok(see_other("/admin/password"));
+        }
+    };
+
+    //let current_password = Password::parse(&form.current_password)?;
     let username = get_username(user_id, &pool).await.map_err(e500)?;
 
     let credentials = Credentials {
         username,
-        password: form.0.current_password,
+        password: form.current_password.clone(),
     };
 
     if let Err(e) = validate_credentials(credentials, &pool).await {

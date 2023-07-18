@@ -1,8 +1,64 @@
-use crate::telemetry::spawn_blocking_with_tracing;
+use crate::{routes::PublishNewsletterError, telemetry::spawn_blocking_with_tracing};
 use anyhow::Context;
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
+use unicode_segmentation::UnicodeSegmentation;
+use zxcvbn::zxcvbn;
+
+#[derive(Debug)]
+pub struct Password(Secret<String>);
+
+impl Password {
+    const MIN_LENGTH: usize = 12;
+    const MAX_LENGTH: usize = 128;
+    const MAX_SCORE: u8 = 4;
+    const ACCEPTABLE_SCORE: u8 = 3;
+
+    pub fn parse(password: &Secret<String>) -> Result<Password, anyhow::Error> {
+        Self::check_length(password)?;
+
+        match zxcvbn(password.expose_secret(), &[]) {
+            Ok(entropy) => match entropy.score() {
+                Self::ACCEPTABLE_SCORE..=Self::MAX_SCORE => Ok(Self(password.clone())),
+                _ => Err(PasswordParseError::PasswordLowScore(
+                    entropy
+                        .feedback()
+                        .as_ref()
+                        .expect("Failed to get a feedback reference")
+                        .warning()
+                        .unwrap()
+                        .to_string(),
+                )
+                .into()),
+            },
+            Err(err) => Err(PublishNewsletterError::UnexpectedError(err.into()).into()),
+        }
+    }
+    pub fn inner_ref(&self) -> &Secret<String> {
+        &self.0
+    }
+
+    fn check_length(password: &Secret<String>) -> Result<(), PasswordParseError> {
+        match password.expose_secret().graphemes(true).count() {
+            length if length < Self::MIN_LENGTH => Err(PasswordParseError::PasswordTooShort),
+            Self::MAX_LENGTH.. => Err(PasswordParseError::PasswordTooLong),
+            _ => Ok(()),
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum PasswordParseError {
+    #[error("Password should be at most 128 characters long.")]
+    PasswordTooLong,
+    #[error("Password should be at least 12 characters long.")]
+    PasswordTooShort,
+    #[error("{0}")]
+    PasswordLowScore(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
 
 pub struct Credentials {
     pub username: String,
@@ -92,4 +148,72 @@ fn verify_password_hash(
         )
         .context("Invalid password.")
         .map_err(AuthError::InvalidCredentials)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::authentication::Password;
+    use claims::{assert_err, assert_ok};
+    use passwords::PasswordGenerator;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use rand::{self, Rng};
+    use secrecy::{ExposeSecret, Secret};
+
+    #[derive(Debug, Clone)]
+    struct ValidPasswordFixture(pub Secret<String>);
+
+    impl quickcheck::Arbitrary for ValidPasswordFixture {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let mut seed = StdRng::seed_from_u64(u64::arbitrary(g));
+            let password_length = seed.gen_range(12..128);
+            let pg = PasswordGenerator {
+                length: password_length,
+                numbers: true,
+                lowercase_letters: true,
+                uppercase_letters: true,
+                symbols: true,
+                spaces: true,
+                exclude_similar_characters: true,
+                strict: true,
+            };
+            ValidPasswordFixture(Secret::new(pg.generate_one().unwrap()))
+        }
+    }
+
+    #[test]
+    fn password_less_then_12_character_should_failed() {
+        let password = Secret::new("Short pass".into());
+        let parsed_passeord = Password::parse(&password);
+        assert_err!(parsed_passeord);
+    }
+
+    #[test]
+    fn password_more_then_128_character_should_failed() {
+        let password = Secret::new("password12".repeat(13).into());
+        let parsed_passeord = Password::parse(&password);
+        assert_err!(parsed_passeord);
+    }
+
+    #[test]
+    fn graphemes_password_() {
+        let password = Secret::new("ぁ😤😠😡🤬🤯😳🥵🥶😱".repeat(12).into());
+        let parsed_passeord = Password::parse(&password);
+        assert_ok!(parsed_passeord);
+    }
+
+    #[test]
+    fn password_with_a_low_entropy_score() {
+        let password = Secret::new("password12345".into());
+        let parsed_passeord = Password::parse(&password);
+        assert_err!(parsed_passeord);
+    }
+
+    // takes a while to run
+    #[quickcheck_macros::quickcheck]
+    fn password_with_a_passible_entropy_score(password: ValidPasswordFixture) {
+        dbg!(password.0.expose_secret());
+        let parsed_passeord = Password::parse(&password.0);
+        assert_ok!(parsed_passeord);
+    }
 }
