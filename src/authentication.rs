@@ -47,7 +47,7 @@ impl Password {
                         entropy
                             .feedback()
                             .as_ref()
-                            .expect("Failed to get a feedback reference")
+                            .ok_or_else(|| anyhow::anyhow!("Failed to get a feedback reference"))?
                             .warning()
                             .unwrap()
                             .to_string(),

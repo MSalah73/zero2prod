@@ -5,7 +5,10 @@ use std::fmt::Write;
 #[get("/login")]
 pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
     let mut error_html = String::new();
-    for message in flash_messages.iter().filter(|m| m.level() == Level::Error) {
+    for message in flash_messages
+        .iter()
+        .filter(|m| m.level() == Level::Error || m.level() == Level::Info)
+    {
         writeln!(error_html, "<p><i>{}</i></p>", message.content()).unwrap();
     }
 

@@ -13,6 +13,10 @@ impl TypedSession {
         self.0.renew();
     }
 
+    pub fn logout(self) {
+        self.0.purge();
+    }
+
     pub fn insert_password_reset(&self, is_needed: bool) -> Result<(), SessionInsertError> {
         self.0.insert(Self::PASSWROD_RESET_KEY, is_needed)
     }
