@@ -64,7 +64,6 @@ features = ["json","rustls-tls", "cookies"]
 claims = "0.7.1"
 fake = "2.6.1"
 linkify = "0.10.0"
-passwords = "3.1.13"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rand = "0.8.5"

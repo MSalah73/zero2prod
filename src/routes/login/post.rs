@@ -1,4 +1,4 @@
-use crate::authentication::{validate_credentials, AuthError, Credentials};
+use crate::authentication::{validate_credentials, AuthError, Credentials, Password};
 use crate::routes::error_chain_fmt;
 use crate::session_state::TypedSession;
 use crate::utils::see_other;
@@ -40,17 +40,29 @@ pub async fn login(
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let credentials = Credentials {
         username: form.0.username,
-        password: form.0.password,
+        password: form.0.password.clone(),
     };
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
 
     match validate_credentials(credentials, &pool).await {
         Ok(user_id) => {
             tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+            let password_feedback = Password::password_feedback(&form.0.password)
+                .map_err(LoginError::UnexpectedError)
+                .unwrap();
+            let reset_needed = password_feedback.score < 3;
+
             session.renew();
             session
                 .insert_user_id(user_id)
                 .map_err(|e| login_redirect(LoginError::UnexpectedError(e.into())))?;
+            session
+                .insert_password_reset(reset_needed)
+                .map_err(|e| login_redirect(LoginError::UnexpectedError(e.into())))?;
+
+            if reset_needed {
+                return Ok(see_other("/admin/password"));
+            }
             Ok(see_other("/admin/dashboard"))
         }
         Err(e) => {

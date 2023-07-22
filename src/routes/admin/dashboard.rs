@@ -12,11 +12,18 @@ pub async fn admin_dashboard(
     session: TypedSession,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
+    match session.get_password_reset().map_err(e500)? {
+        Some(true) => return Ok(see_other("/admin/password")),
+        None => return Ok(see_other("/login")),
+        _ => {}
+    }
+
     let username = if let Some(user_id) = session.get_user_id().map_err(e500)? {
         get_username(user_id, &pool).await.map_err(e500)?
     } else {
         return Ok(see_other("/login"));
     };
+
     Ok(HttpResponse::Ok()
         .content_type(ContentType::html())
         .body(format!(

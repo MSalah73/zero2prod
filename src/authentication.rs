@@ -9,6 +9,11 @@ use zxcvbn::zxcvbn;
 #[derive(Debug)]
 pub struct Password(Secret<String>);
 
+pub struct PasswordFeedback {
+    pub score: u8,
+    pub info: Option<String>,
+}
+
 impl Password {
     const MIN_LENGTH: usize = 12;
     const MAX_LENGTH: usize = 128;
@@ -18,38 +23,56 @@ impl Password {
     pub fn parse(password: &Secret<String>) -> Result<Password, anyhow::Error> {
         Self::check_length(password)?;
 
-        match zxcvbn(password.expose_secret(), &[]) {
-            Ok(entropy) => match entropy.score() {
-                Self::ACCEPTABLE_SCORE..=Self::MAX_SCORE => Ok(Self(password.clone())),
-                _ => Err(PasswordParseError::PasswordLowScore(
-                    entropy
-                        .feedback()
-                        .as_ref()
-                        .expect("Failed to get a feedback reference")
-                        .warning()
-                        .unwrap()
-                        .to_string(),
-                )
-                .into()),
-            },
-            Err(err) => Err(PublishNewsletterError::UnexpectedError(err.into()).into()),
+        let feedback = Self::password_feedback(password)?;
+
+        match feedback.score {
+            Self::ACCEPTABLE_SCORE..=Self::MAX_SCORE => Ok(Self(password.clone())),
+            _ => Err(PasswordError::PasswordLowScore(feedback.info.unwrap()).into()),
         }
     }
+
     pub fn inner_ref(&self) -> &Secret<String> {
         &self.0
     }
 
-    fn check_length(password: &Secret<String>) -> Result<(), PasswordParseError> {
+    pub fn password_feedback(
+        password_candidate: &Secret<String>,
+    ) -> Result<PasswordFeedback, anyhow::Error> {
+        match zxcvbn(password_candidate.expose_secret(), &[]) {
+            Ok(entropy) => {
+                let mut feedback = None;
+
+                if entropy.score() < 3 {
+                    feedback = Some(
+                        entropy
+                            .feedback()
+                            .as_ref()
+                            .expect("Failed to get a feedback reference")
+                            .warning()
+                            .unwrap()
+                            .to_string(),
+                    );
+                }
+                Ok(PasswordFeedback {
+                    score: entropy.score(),
+                    info: feedback,
+                })
+            }
+            Err(err) => Err(PublishNewsletterError::UnexpectedError(err.into()).into()),
+        }
+    }
+
+    fn check_length(password: &Secret<String>) -> Result<(), PasswordError> {
         match password.expose_secret().graphemes(true).count() {
-            length if length < Self::MIN_LENGTH => Err(PasswordParseError::PasswordTooShort),
-            Self::MAX_LENGTH.. => Err(PasswordParseError::PasswordTooLong),
+            length if length < Self::MIN_LENGTH => Err(PasswordError::PasswordTooShort),
+            Self::MAX_LENGTH.. => Err(PasswordError::PasswordTooLong),
             _ => Ok(()),
         }
     }
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum PasswordParseError {
+pub enum PasswordError {
     #[error("Password should be at most 128 characters long.")]
     PasswordTooLong,
     #[error("Password should be at least 12 characters long.")]
@@ -154,7 +177,8 @@ fn verify_password_hash(
 mod tests {
     use crate::authentication::Password;
     use claims::{assert_err, assert_ok};
-    use passwords::PasswordGenerator;
+    use fake::faker::internet::en::Password as fake_pw_gn;
+    use fake::Fake;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use rand::{self, Rng};
@@ -167,17 +191,8 @@ mod tests {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             let mut seed = StdRng::seed_from_u64(u64::arbitrary(g));
             let password_length = seed.gen_range(12..128);
-            let pg = PasswordGenerator {
-                length: password_length,
-                numbers: true,
-                lowercase_letters: true,
-                uppercase_letters: true,
-                symbols: true,
-                spaces: true,
-                exclude_similar_characters: true,
-                strict: true,
-            };
-            ValidPasswordFixture(Secret::new(pg.generate_one().unwrap()))
+            let password = fake_pw_gn(password_length..128);
+            ValidPasswordFixture(Secret::new(password.fake()))
         }
     }
 
