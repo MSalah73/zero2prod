@@ -87,3 +87,47 @@ async fn current_password_must_be_valid() {
     let html_password_form = app.get_change_password_html().await;
     assert!(html_password_form.contains("<p><i>The current password is incorrect.</i></p>"));
 }
+
+#[tokio::test]
+async fn changing_password_works() {
+    // Arrange
+    let app = spawn_app().await;
+    let login_body = serde_json::json!({
+        "username": app.test_user.username,
+        "password": app.test_user.password,
+    });
+    let new_password = Uuid::new_v4().to_string();
+    let change_password_body = serde_json::json!({
+        "current_password" : &app.test_user.password,
+        "new_password" : &new_password,
+        "check_new_password" : &new_password,
+    });
+    let new_credentials_login_body = serde_json::json!({
+        "username": app.test_user.username,
+        "password": new_password,
+    });
+
+    // Act 1 -- Login
+    let response = app.post_login(&login_body).await;
+    assert_is_redirect_to(&response, "/admin/dashboard");
+
+    // Act 2 -- Change password
+    let response = app.post_change_password(&change_password_body).await;
+    assert_is_redirect_to(&response, "/admin/password");
+
+    // Act 3 -- Follow redirect
+    let html_page = app.get_change_password_html().await;
+    assert!(html_page.contains(r#"<p><i>Your password has been changed.</i></p>"#));
+
+    // Act 4 -- Logout
+    let response = app.post_logout().await;
+    assert_is_redirect_to(&response, "/login");
+
+    // Act 5 -- Follow redirect
+    let html_page = app.get_login_html().await;
+    assert!(html_page.contains(r#"<p><i>You have successfully logged out.</i></p>"#));
+
+    // Act 6 --  Login with new password
+    let response = app.post_login(&new_credentials_login_body).await;
+    assert_is_redirect_to(&response, "/admin/dashboard");
+}

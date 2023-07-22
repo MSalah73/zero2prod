@@ -1,9 +1,13 @@
 use crate::{routes::PublishNewsletterError, telemetry::spawn_blocking_with_tracing};
 use anyhow::Context;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::{
+    password_hash::SaltString, Algorithm, Argon2, Params, PasswordHash, PasswordHasher,
+    PasswordVerifier, Version,
+};
 use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 use unicode_segmentation::UnicodeSegmentation;
+use uuid::Uuid;
 use zxcvbn::zxcvbn;
 
 #[derive(Debug)]
@@ -101,12 +105,6 @@ pub async fn validate_credentials(
     credentials: Credentials,
     pool: &PgPool,
 ) -> Result<uuid::Uuid, AuthError> {
-    //    let hasher = Argon2::new(
-    //        Algorithm::Argon2id,
-    //        Version::V0x13,
-    //        Params::new(19456, 2, 1, None).context("Failed to build Argon parameters.").map_err(PublishNewsletterError::UnexpectedError)?,
-    //    );
-
     let mut user_id = None;
     let mut expected_password_hash = Secret::new(
         "$argon2id$v=19$m=19456,t=2,p=1$\
@@ -153,6 +151,30 @@ async fn get_stored_credentials(
     Ok(row)
 }
 
+#[tracing::instrument(name = "Change password.", skip(password, pool))]
+pub async fn change_password(
+    user_id: Uuid,
+    password: Password,
+    pool: &PgPool,
+) -> Result<(), anyhow::Error> {
+    let password_hash = spawn_blocking_with_tracing(move || compute_password_hash(&password))
+        .await?
+        .context("Failed to hash password")?;
+    sqlx::query!(
+        r#"
+        UPDATE users
+        SET password_hash = $1
+        WHERE user_id = $2
+        "#,
+        password_hash.expose_secret(),
+        user_id
+    )
+    .execute(pool)
+    .await
+    .context("Failed to change user password in the database.")?;
+
+    Ok(())
+}
 #[tracing::instrument(
     name = "Verify password hash.",
     skip(expected_password_hash, password_candidate)
@@ -171,6 +193,20 @@ fn verify_password_hash(
         )
         .context("Invalid password.")
         .map_err(AuthError::InvalidCredentials)
+}
+
+fn compute_password_hash(password: &Password) -> Result<Secret<String>, anyhow::Error> {
+    let salt = SaltString::generate(&mut rand::thread_rng());
+    let password_hash = Argon2::new(
+        Algorithm::Argon2id,
+        Version::V0x13,
+        Params::new(19456, 2, 1, None)
+            .context("Failed to build Argon parameters.")
+            .map_err(AuthError::UnexpectedError)?,
+    )
+    .hash_password(password.inner_ref().expose_secret().as_bytes(), &salt)?
+    .to_string();
+    Ok(Secret::new(password_hash))
 }
 
 #[cfg(test)]

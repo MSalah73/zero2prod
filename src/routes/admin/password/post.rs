@@ -40,7 +40,7 @@ pub async fn change_password(
         return Ok(see_other("/admin/password"));
     }
 
-    let _new_passeord = match Password::parse(&form.new_password) {
+    let new_passeord = match Password::parse(&form.new_password) {
         Ok(password) => password,
         Err(e) => {
             FlashMessage::error(e.to_string()).send();
@@ -48,7 +48,6 @@ pub async fn change_password(
         }
     };
 
-    //let current_password = Password::parse(&form.current_password)?;
     let username = get_username(user_id, &pool).await.map_err(e500)?;
 
     let credentials = Credentials {
@@ -66,5 +65,9 @@ pub async fn change_password(
         };
     }
 
-    Ok(HttpResponse::Ok().finish())
+    crate::authentication::change_password(user_id, new_passeord, &pool)
+        .await
+        .map_err(e500)?;
+    FlashMessage::error("Your password has been changed.").send();
+    Ok(see_other("/admin/password"))
 }
