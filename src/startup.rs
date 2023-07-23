@@ -1,3 +1,4 @@
+use crate::authentication::{force_password_change_on_weak_password, reject_anonymous_users};
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
 use crate::routes::{
@@ -11,6 +12,7 @@ use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use actix_web_flash_messages::storage::CookieMessageStore;
 use actix_web_flash_messages::FlashMessagesFramework;
+use actix_web_lab::middleware::from_fn;
 use secrecy::ExposeSecret;
 use secrecy::Secret;
 use sqlx::postgres::PgPoolOptions;
@@ -118,10 +120,17 @@ pub async fn run(
             .service(home)
             .service(login_form)
             .service(login)
-            .service(admin_dashboard)
-            .service(change_password_form)
-            .service(change_password)
-            .service(logout)
+            // TODO: expose a scope at each fuctional level -- admin - mod.rs expose the scope and
+            // the routes to use here
+            .service(
+                web::scope("/admin")
+                    .wrap(from_fn(reject_anonymous_users))
+                    .wrap(from_fn(force_password_change_on_weak_password))
+                    .service(admin_dashboard)
+                    .service(change_password_form)
+                    .service(change_password)
+                    .service(logout),
+            )
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())
