@@ -128,10 +128,11 @@ pub async fn run(
                     .service(change_password_form)
                     .service(change_password)
                     .service(logout)
-                    .service( web::scope("")
-                        .wrap(from_fn(force_password_change_on_weak_password))
-                        .service(admin_dashboard)
-                    )
+                    .service(
+                        web::scope("")
+                            .wrap(from_fn(force_password_change_on_weak_password))
+                            .service(admin_dashboard),
+                    ),
             )
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
