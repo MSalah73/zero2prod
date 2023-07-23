@@ -63,10 +63,6 @@ pub async fn force_password_change_on_weak_password(
     req: ServiceRequest,
     next: Next<impl MessageBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
-    if req.path() == "/admin/password" {
-        return next.call(req).await;
-    }
-
     match session.get_password_reset().map_err(e500)? {
         Some(true) => {
             let response = see_other("/admin/password");
