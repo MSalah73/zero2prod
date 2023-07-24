@@ -1,5 +1,6 @@
+use argon2::password_hash::SaltString;
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
 use once_cell::sync::Lazy;
-use sha3::Digest;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
@@ -29,14 +30,15 @@ pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
+    pub api_client: reqwest::Client,
     pub port: u16,
     pub test_user: TestUser,
 }
 
 pub struct TestUser {
-    user_id: Uuid,
-    username: String,
-    password: String,
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
 }
 
 impl TestUser {
@@ -48,8 +50,17 @@ impl TestUser {
         }
     }
     async fn store(&self, pool: &PgPool) {
-        let password_hash = sha3::Sha3_256::digest(self.password.as_bytes());
-        let password_hash = format!("{:x}", password_hash);
+        let salt = SaltString::generate(&mut rand::thread_rng());
+
+        let password_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(19456, 2, 1, None).unwrap(),
+        )
+        .hash_password(self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
         sqlx::query!(
             r#"
             INSERT INTO users (user_id, username, password_hash)
@@ -65,8 +76,67 @@ impl TestUser {
     }
 }
 impl TestApp {
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/admin/logout", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+    pub async fn post_change_password<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/admin/password", self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to excute request")
+    }
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/admin/password", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password().await.text().await.unwrap()
+    }
+    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
+        self.api_client
+            .get(&format!("{}/admin/dashboard", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+    pub async fn get_admin_dashboard_html(&self) -> String {
+        self.get_admin_dashboard().await.text().await.unwrap()
+    }
+    pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/login", self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to excute request")
+    }
+    pub async fn get_login_html(&self) -> String {
+        self.api_client
+            .get(format!("{}/login", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+            .text()
+            .await
+            .unwrap()
+    }
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
-        reqwest::Client::new()
+        self.api_client
             .post(&format!("{}/subscriptions", self.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
@@ -74,14 +144,26 @@ impl TestApp {
             .await
             .expect("Failed to excute request")
     }
-    pub async fn post_newsletters(&self, body: &serde_json::Value) -> reqwest::Response {
-        reqwest::Client::new()
-            .post(&format!("{}/newsletters", self.address))
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(body)
+    pub async fn post_newsletters<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/admin/newsletters", self.address))
+            .form(body)
             .send()
             .await
             .expect("Failed to execute request.")
+    }
+    pub async fn get_newsletters(&self) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/admin/newsletters", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+    pub async fn get_newsletters_html(&self) -> String {
+        self.get_newsletters().await.text().await.unwrap()
     }
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
@@ -134,10 +216,17 @@ pub async fn spawn_app() -> TestApp {
 
     let _ = tokio::spawn(application.run_until_stopped());
 
+    let api_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
+
     let test_app = TestApp {
         address,
         db_pool: get_connection_pool(&configuration.database),
         email_server,
+        api_client,
         port: application_port,
         test_user: TestUser::generate(),
     };
@@ -165,4 +254,9 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to migrate the database.");
     connection_pool
+}
+
+pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
+    assert_eq!(response.status().as_u16(), 303);
+    assert_eq!(response.headers().get("Location").unwrap(), location);
 }

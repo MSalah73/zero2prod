@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -x
+set +x
 set -eo pipefail
 
 # Check for dependencies before launching the database

@@ -3,7 +3,7 @@ use zero2prod::startup::Application;
 use zero2prod::telemetry::{get_subscriber, subscriber_init};
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> anyhow::Result<()> {
     // Setting up log env
     let subscriber = get_subscriber("zero2prod".into(), "trace".into(), std::io::stdout);
     subscriber_init(subscriber);
