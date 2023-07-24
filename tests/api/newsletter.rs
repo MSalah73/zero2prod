@@ -132,11 +132,13 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let response = app.post_login(&login_body).await;
     assert_is_redirect_to(&response, "/admin/dashboard");
 
-    // Act
+    // Act 2 -- issue a newsletter
     let response = app.post_newsletters(&newsletter_body_request).await;
-    // Asserrt
-    assert_eq!(response.status().as_u16(), 200);
-    //Mock verifies on Drop that we haven't send any newsletters
+    assert_is_redirect_to(&response, "/admin/newsletters");
+
+    // Act 3 -- follow redirect
+    let html_page = app.get_newsletters_html().await;
+    assert!(html_page.contains("<p><i>The newsletter issue has been published!</i></p>"));
 }
 
 #[tokio::test]
@@ -166,11 +168,13 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let response = app.post_login(&login_body).await;
     assert_is_redirect_to(&response, "/admin/dashboard");
 
-    // Act
+    // Act 2 -- issue a newsletter
     let response = app.post_newsletters(&newsletter_body_request).await;
+    assert_is_redirect_to(&response, "/admin/newsletters");
 
-    // Asserrt
-    assert_eq!(response.status().as_u16(), 200);
+    // Act 3 -- follow redirect
+    let html_page = app.get_newsletters_html().await;
+    assert!(html_page.contains("<p><i>The newsletter issue has been published!</i></p>"));
 }
 async fn create_unconfirmed_subscriber(app: &TestApp) -> ConfirmationLinks {
     let body = "name=John73&email=john_r77%40gmail.com";

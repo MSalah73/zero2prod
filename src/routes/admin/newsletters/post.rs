@@ -78,8 +78,8 @@ pub async fn publish_newsletter(
             }
         }
     }
-    FlashMessage::error("Newsletter issue has been published.").send();
-    Ok(HttpResponse::Ok().finish())
+    FlashMessage::error("The newsletter issue has been published!").send();
+    Ok(see_other("/admin/newsletters"))
 }
 
 #[tracing::instrument(name = "Fetch all confirmed subscribers.", skip(pool))]
