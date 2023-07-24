@@ -1,147 +1,85 @@
-use crate::authentication::{validate_credentials, AuthError, Credentials};
-use crate::{domain::SubscriberEmail, email_client::EmailClient, routes::error_chain_fmt};
-use actix_web::http::{
-    header,
-    header::{HeaderMap, HeaderValue},
-    StatusCode,
-};
-use actix_web::{post, web, HttpRequest, HttpResponse, ResponseError};
+use crate::utils::{e500, see_other};
+use crate::{domain::SubscriberEmail, email_client::EmailClient};
+use actix_web::{post, web, HttpResponse};
+use actix_web_flash_messages::FlashMessage;
 use anyhow::Context;
-use base64::Engine;
-use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
-pub struct BodyData {
+pub struct FormData {
     title: String,
-    content: Content,
+    html_content: String,
+    text_content: String,
 }
 
-#[derive(serde::Deserialize)]
-pub struct Content {
-    html: String,
-    text: String,
+pub struct Newsletter {
+    title: String,
+    html_content: String,
+    text_content: String,
+}
+
+impl Newsletter {
+    fn parse(form: FormData) -> Result<Self, ()> {
+        if form.title.trim().is_empty() {
+            FlashMessage::error("Title is empty.").send();
+            Err(())
+        } else if form.html_content.trim().is_empty() {
+            FlashMessage::error("Html content is empty.").send();
+            Err(())
+        } else if form.text_content.trim().is_empty() {
+            FlashMessage::error("Plain text content is empty.").send();
+            Err(())
+        } else {
+            Ok(Self {
+                title: form.title,
+                html_content: form.html_content,
+                text_content: form.text_content,
+            })
+        }
+    }
 }
 
 pub struct ConfirmedSubscriber {
     email: SubscriberEmail,
 }
 
-#[derive(thiserror::Error)]
-pub enum PublishNewsletterError {
-    #[error("Authentication failed.")]
-    AuthError(#[source] anyhow::Error),
-    #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error),
-}
-
-impl ResponseError for PublishNewsletterError {
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            PublishNewsletterError::AuthError(_) => {
-                let mut response = HttpResponse::new(StatusCode::UNAUTHORIZED);
-                let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
-                response
-                    .headers_mut()
-                    .insert(header::WWW_AUTHENTICATE, header_value);
-                response
-            }
-            PublishNewsletterError::UnexpectedError(_) => {
-                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-}
-
-impl std::fmt::Debug for PublishNewsletterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
 #[tracing::instrument(
     name = "Publish newsletter confirmed subscribers.",
-    skip(body, email_client, pool),
-    fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
+    skip(form, email_client, pool)
 )]
 #[post("/newsletters")]
 pub async fn publish_newsletter(
-    body: web::Json<BodyData>,
+    form: web::Form<FormData>,
     email_client: web::Data<EmailClient>,
-    request: HttpRequest,
     pool: web::Data<PgPool>,
-) -> Result<HttpResponse, PublishNewsletterError> {
-    let credentials =
-        basic_authentication(request.headers()).map_err(PublishNewsletterError::AuthError)?;
-    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
-    tracing::Span::current().record(
-        "user_id",
-        &tracing::field::display(&credentials.password.expose_secret()),
-    );
+) -> Result<HttpResponse, actix_web::Error> {
+    let newsletter = match Newsletter::parse(form.0) {
+        Err(_) => return Ok(see_other("/admin/newsletters")),
+        Ok(newsletter) => newsletter,
+    };
 
-    let user_id = validate_credentials(credentials, &pool)
-        .await
-        .map_err(|e| match e {
-            AuthError::InvalidCredentials(_) => PublishNewsletterError::AuthError(e.into()),
-            AuthError::UnexpectedError(_) => PublishNewsletterError::UnexpectedError(e.into()),
-        })?;
-
-    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-    let confirmed_subscribers = get_confirmed_subscribers(&pool)
-        .await
-        .context("Failed to fetch confirmed subscriber from the database.")?;
+    let confirmed_subscribers = get_confirmed_subscribers(&pool).await.map_err(e500)?;
 
     for subscriber in confirmed_subscribers {
         match subscriber {
             Ok(subscriber) => email_client
                 .send_email(
                     &subscriber.email,
-                    &body.title,
-                    &body.content.html,
-                    &body.content.text,
+                    &newsletter.title,
+                    &newsletter.html_content,
+                    &newsletter.text_content,
                 )
                 .await
-                .with_context(|| {
-                    format!("Failed to send newsletter issue to {}", subscriber.email)
-                })?,
+                .with_context(|| format!("Failed to send newsletter issue to {}", subscriber.email))
+                .map_err(e500)?,
             Err(error) => {
                 tracing::warn!(error.cause_chain = ?error, "Skipping a confirmed subscriber. \
                     Their stored contact detailed are invalid.")
             }
         }
     }
+    FlashMessage::error("Newsletter issue has been published.").send();
     Ok(HttpResponse::Ok().finish())
-}
-
-fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
-    let header_value = headers
-        .get("Authorization")
-        .context("The 'Authorization' was missing.")?
-        .to_str()
-        .context("The 'Authorization' header value was not a valid UTF8 string.")?;
-    let base64encoded_segment = header_value
-        .strip_prefix("Basic ")
-        .context("The authorization scheme was not 'baisc'.")?;
-    let decoded_bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64encoded_segment)
-        .context("Failed to decode base64-decode 'basic' credentials.")?;
-    let decoded_credentials = String::from_utf8(decoded_bytes)
-        .context("The decoded credential string is not a valid UTF8.")?;
-
-    let mut credentials = decoded_credentials.splitn(2, ':');
-    let username = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'basic' auth."))?
-        .to_string();
-    let password = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'basic' auth."))?
-        .to_string();
-
-    Ok(Credentials {
-        username,
-        password: Secret::new(password),
-    })
 }
 
 #[tracing::instrument(name = "Fetch all confirmed subscribers.", skip(pool))]

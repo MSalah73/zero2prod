@@ -1,4 +1,4 @@
-use crate::{routes::PublishNewsletterError, telemetry::spawn_blocking_with_tracing};
+use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
 use argon2::{
     password_hash::SaltString, Algorithm, Argon2, Params, PasswordHash, PasswordHasher,
@@ -62,7 +62,7 @@ impl Password {
                     info: feedback,
                 })
             }
-            Err(err) => Err(PublishNewsletterError::UnexpectedError(err.into()).into()),
+            Err(err) => Err(PasswordError::UnexpectedError(err.into()).into()),
         }
     }
 

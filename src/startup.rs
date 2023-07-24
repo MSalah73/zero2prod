@@ -3,7 +3,7 @@ use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
 use crate::routes::{
     admin_dashboard, change_password, change_password_form, confirm, health_check, home, login,
-    login_form, logout, publish_newsletter, subscribe,
+    login_form, logout, publish_newsletter, publish_newsletter_form, subscribe,
 };
 use actix_session::storage::RedisSessionStore;
 use actix_session::SessionMiddleware;
@@ -116,7 +116,6 @@ pub async fn run(
             .service(health_check)
             .service(subscribe)
             .service(confirm)
-            .service(publish_newsletter)
             .service(home)
             .service(login_form)
             .service(login)
@@ -131,7 +130,9 @@ pub async fn run(
                     .service(
                         web::scope("")
                             .wrap(from_fn(force_password_change_on_weak_password))
-                            .service(admin_dashboard),
+                            .service(admin_dashboard)
+                            .service(publish_newsletter_form)
+                            .service(publish_newsletter),
                     ),
             )
             .app_data(db_pool.clone())
