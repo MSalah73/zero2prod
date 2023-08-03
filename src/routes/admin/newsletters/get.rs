@@ -5,6 +5,7 @@ use std::fmt::Write;
 #[get("/newsletters")]
 pub async fn publish_newsletter_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
     let mut error_html = String::new();
+    let idempotency_key = uuid::Uuid::new_v4();
     for message in flash_messages
         .iter()
         .filter(|m| m.level() == Level::Error || m.level() == Level::Info)
@@ -50,6 +51,7 @@ pub async fn publish_newsletter_form(flash_messages: IncomingFlashMessages) -> H
                         ></textarea>
                     </label>
                     <br>
+                    <input hidden type="text" name="idempotency_key" value="{idempotency_key}">
                     <button type="submit">Login</button>
                 </form>
             </body>

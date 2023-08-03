@@ -33,10 +33,7 @@ async fn new_password_fields_must_match() {
     // Arrange
     let app = spawn_app().await;
 
-    let login_body = serde_json::json!({
-    "username": app.test_user.username,
-    "password": app.test_user.password,
-    });
+    app.test_user.login(&app).await;
 
     let new_password = Uuid::new_v4().to_string();
     let wrong_new_password = Uuid::new_v4().to_string();
@@ -46,9 +43,7 @@ async fn new_password_fields_must_match() {
         "check_new_password" : &wrong_new_password,
     });
 
-    // Act 1 -- Login and attempt to change password
-    app.post_login(&login_body).await;
-
+    // Act 1 -- Attempt to change password
     let response = app.post_change_password(&change_password_body).await;
 
     // Assert 1
@@ -62,11 +57,7 @@ async fn new_password_fields_must_match() {
 async fn current_password_must_be_valid() {
     // Arrange
     let app = spawn_app().await;
-
-    let login_body = serde_json::json!({
-    "username": app.test_user.username,
-    "password": app.test_user.password,
-    });
+    app.test_user.login(&app).await;
 
     let new_password = Uuid::new_v4().to_string();
     let wrong_current_password = Uuid::new_v4().to_string();
@@ -76,9 +67,7 @@ async fn current_password_must_be_valid() {
         "check_new_password" : &new_password,
     });
 
-    // Act 1 -- Login and attempt to change password
-    app.post_login(&login_body).await;
-
+    // Act 1 -- Attempt to change password
     let response = app.post_change_password(&change_password_body).await;
 
     // Assert 1
@@ -92,10 +81,7 @@ async fn current_password_must_be_valid() {
 async fn changing_password_works() {
     // Arrange
     let app = spawn_app().await;
-    let login_body = serde_json::json!({
-        "username": app.test_user.username,
-        "password": app.test_user.password,
-    });
+    app.test_user.login(&app).await;
     let new_password = Uuid::new_v4().to_string();
     let change_password_body = serde_json::json!({
         "current_password" : &app.test_user.password,
@@ -107,27 +93,23 @@ async fn changing_password_works() {
         "password": new_password,
     });
 
-    // Act 1 -- Login
-    let response = app.post_login(&login_body).await;
-    assert_is_redirect_to(&response, "/admin/dashboard");
-
-    // Act 2 -- Change password
+    // Act 1 -- Change password
     let response = app.post_change_password(&change_password_body).await;
     assert_is_redirect_to(&response, "/admin/password");
 
-    // Act 3 -- Follow redirect
+    // Act 2 -- Follow redirect
     let html_page = app.get_change_password_html().await;
     assert!(html_page.contains(r#"<p><i>Your password has been changed.</i></p>"#));
 
-    // Act 4 -- Logout
+    // Act 3 -- Logout
     let response = app.post_logout().await;
     assert_is_redirect_to(&response, "/login");
 
-    // Act 5 -- Follow redirect
+    // Act 4 -- Follow redirect
     let html_page = app.get_login_html().await;
     assert!(html_page.contains(r#"<p><i>You have successfully logged out.</i></p>"#));
 
-    // Act 6 --  Login with new password
+    // Act 5 --  Login with new password
     let response = app.post_login(&new_credentials_login_body).await;
     assert_is_redirect_to(&response, "/admin/dashboard");
 }
