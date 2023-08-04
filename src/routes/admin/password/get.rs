@@ -50,6 +50,13 @@ pub async fn change_password_form(
                     <br>
                     <button type="submit">Change password</button>
                 </form>
+                <ol>
+                    <li>
+                        <form name="logoutForm" action="/admin/logout" method="post">
+                            <input type="submit" value="Logout">
+                        </form>
+                    </li>
+                </ol>
                 <p><a href="/admin/dashboard">&lt;- Back</a></p>
             </body>
             </html>"#

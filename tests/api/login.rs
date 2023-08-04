@@ -5,6 +5,7 @@ use crate::helper::spawn_app;
 async fn redirect_to_admin_dashboard_after_login_success() {
     // Arrange
     let app = spawn_app().await;
+
     let login_body = serde_json::json!({
         "username": app.test_user.username,
         "password": app.test_user.password,

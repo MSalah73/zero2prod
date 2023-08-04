@@ -1,4 +1,5 @@
 use crate::domain::SubscriberEmail;
+use crate::email_client::EmailClient;
 use reqwest;
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
@@ -104,6 +105,14 @@ impl DatabaseSettings {
 }
 
 impl EmailClientSettings {
+    // This to allow for background worker testing - it slightly different but it allows us to
+    // test background proccess effectively
+    pub fn client(self) -> EmailClient {
+        let sender_email = self.sender().expect("Failed sender email address");
+        let timeout = self.tineout();
+        let url = self.url().unwrap();
+        EmailClient::new(sender_email, url, self.authorization_token, timeout)
+    }
     pub fn sender(&self) -> Result<SubscriberEmail, String> {
         SubscriberEmail::parse(self.sender_email.clone())
     }
