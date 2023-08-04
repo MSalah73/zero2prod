@@ -34,21 +34,7 @@ impl Application {
             .application
             .base_url()
             .expect("Invalid application base url.");
-        let sender_email = configuration
-            .email_client
-            .sender()
-            .expect("Invalid sender email address.");
-        let url = configuration
-            .email_client
-            .url()
-            .expect("Invalud email server url.");
-        let timeout = configuration.email_client.tineout();
-        let email_client = EmailClient::new(
-            sender_email,
-            url,
-            configuration.email_client.authorization_token,
-            timeout,
-        );
+        let email_client = configuration.email_client.client();
 
         let address = format!(
             "{}:{}",
